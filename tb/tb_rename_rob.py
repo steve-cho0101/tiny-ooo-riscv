@@ -1,4 +1,4 @@
-"""cocotb tests for rtl/rename_rob.sv.
+"""cocotb tests for src/rename_rob.sv.
 
 Directed tests cover the known corner cases. test_random_dataflow runs real
 values through the renamed tags with random completion order, and compares

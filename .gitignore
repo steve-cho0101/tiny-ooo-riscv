@@ -7,3 +7,10 @@ results.xml
 *.vcd
 *.fst
 *.result.xml
+*.fst.hier
+runs/
+tt_submission/
+src/user_config.json
+src/config_merged.json
+test/sim_build/
+test/gate_level_netlist.v

@@ -1,7 +1,7 @@
 # Architecture
 
-Status: agreed design. `rename_rob` is implemented and tested in simulation, and
-the rest has no RTL yet. Nothing here has been hardened.
+Status: agreed design. `rename_rob` and `prf` are implemented and tested in
+simulation, and the rest has no RTL yet. Nothing here has been hardened.
 
 ## Goals
 
@@ -265,12 +265,12 @@ because they missed the third RAT read port and the swap paths.
 | **Total** | **42,823** |
 | With 15% glue logic (assumed) | 49,246 |
 
-One tile is about 18,000 µm² (167 × 108 µm, per the template). That makes the
-estimate 68% of a 2×2 and 46% of a 3×2. Multi-tile sizes here are simple
-multiples, which is an approximation.
+Die sizes come from the TT tools (`tech/sky130A/tile_sizes.yaml`): 1×1 is
+17,955 µm², 1×2 is 36,347 µm², 2×2 is 75,603 µm² and 3×2 is 114,858 µm². That
+makes the estimate 65% of a 2×2 and 43% of a 3×2.
 
 As a pessimistic bound, doubling the RS, ALU, front end and LSU probes gives a
-design with glue logic of about 92% of 2×2 and 61% of 3×2. The PRF probe is left
+design with glue logic of about 88% of 2×2 and 58% of 3×2. The PRF probe is left
 as is, since it is mostly storage.
 That is why 3×2 stays the plan, and 2×2 now looks unlikely without the saving
 below.
@@ -285,13 +285,13 @@ Comparisons from the same probes:
 | Alternative | Result |
 |---|---|
 | 15×32 flop registers | 21,680 µm² |
-| Value-capturing ROB and RS, as in textbook Tomasulo | 7,702 + 7,991 µm², total design about 81% of 2×2 (probes only) |
+| Value-capturing ROB and RS, as in textbook Tomasulo | 7,702 + 7,991 µm², total design about 77% of 2×2 (probes only) |
 | Single PRF read port | Saves about 2,900 µm², but needs an operand latch and an extra cycle. Rejected |
 | Iterative shifter | Saves 725 µm². Rejected |
 | Nibble-serial datapath | Saves about 5,900 µm², but ties all logic to a rotation phase. Fallback only |
 
-If latches fail, 19×32 flops scale to about 27,500 µm², which is about 87% of
-2×2 and 58% of 3×2 with glue logic included.
+If latches fail, 19×32 flops scale to about 27,500 µm², which is about 83% of
+2×2 and 55% of 3×2 with glue logic included.
 
 ## Risks
 
