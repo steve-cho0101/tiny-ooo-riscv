@@ -1,7 +1,7 @@
 # ISA
 
-Status: agreed scope. Toolchain notes tested with xPack GCC 15.2.0 on one small C
-file, compiled and linked only. Nothing has been executed on a core yet.
+Status: agreed scope. C compiled with xPack GCC 15.2.0 runs on the core in
+simulation, but not yet on real hardware.
 
 ## Scope
 
@@ -80,12 +80,12 @@ Self-modifying code is not supported, because the MCU streams ahead of the PC.
 
 ## Software requirements
 
-Compile command. `-lgcc` must come last, and the xPack toolchain uses the
-`riscv-none-elf-` prefix:
+Compile command, using the files in `sw/`. `-lgcc` must come last, and the xPack
+toolchain uses the `riscv-none-elf-` prefix:
 
 ```bash
 riscv-none-elf-gcc -march=rv32e -mabi=ilp32e -O1 \
-    -ffreestanding -nostdlib -o test.elf startup.S test.c runtime.c -lgcc
+    -ffreestanding -nostdlib -T link.ld -o test.elf startup.S test.c runtime.c -lgcc
 ```
 
 - `startup.S`: clear every register, set `sp`, copy `.data` if it needs a separate

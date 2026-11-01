@@ -1,8 +1,9 @@
 # Architecture
 
-Status: agreed design. `rename_rob`, `prf`, `decode` and `alu` are implemented and
-tested in simulation, and the rest has no RTL yet. `prf` has been hardened in a test
-harness, see [Hardening results](#hardening-results). The CPU has not.
+Status: every block is implemented, and the full CPU runs GCC-compiled C in
+simulation. `prf` has been hardened in a test harness, see
+[Hardening results](#hardening-results). The full CPU has not been hardened, and
+nothing has run on real hardware or against a real RP2350.
 
 ## Goals
 
@@ -111,21 +112,31 @@ Every instruction takes a ROB slot, including branches and stores.
 
 ## Reservation stations
 
-Each entry holds: valid, two source tags with ready bits, opcode, `pdst`, ROB
-tag, 12-bit immediate, and operand-B select.
+Each entry holds: valid, two source tags with ready bits, class, ALU op, memory
+op, `pdst`, ROB tag, 12-bit immediate, and operand-B select.
 
 - Selection is fixed priority. An older instruction cannot starve, because a
   full ROB stops new instructions and the entry then issues.
 - **Lost wakeup rule:** the ready bits written at rename must include the
   write-back in the same cycle. Otherwise an instruction renamed while its
   producer is in W waits forever.
-- Issue is held for one cycle when the LSU needs the write port.
+- Issue is held for one cycle when the LSU needs the write port. Wakeups still
+  land during a hold.
+- Issue reads only the stored ready bits, so an instruction cannot issue during
+  its producer's W cycle, while the latch is open.
+- `alloc_ready` ignores a same-cycle issue, as in the ROB, so there is no
+  combinational path from `issue_hold` to dispatch.
 
 ## Write port
 
 There is one PRF write port and one result bus. Priority is LSU, then ALU, then
 dispatch write. A dispatch write cannot be starved, because the RS drains and
 stops refilling while dispatch is stalled.
+
+The ROB's complete port shares this bus, so a result carries its ROB tag. A store
+has nothing to write, so `lsu` sends `PTAG_ZERO`, which reads as zero and touches
+no register. That way a store finishing can never collide with an ALU completion,
+and no second arbiter is needed. `result_valid` from `lsu` is `issue_hold`.
 
 ## Dispatch writes
 
@@ -159,6 +170,9 @@ Since the MCU streams instructions, the core keeps only the decode PC.
   is speculative and no older store is pending.
 - **Stores** wait until they are at the ROB head, so memory can never change
   early. The store is marked done when its frame has been sent, and then retires.
+- `lsu` uses one 32-bit register both ways: store bytes shift out low first, and
+  load nibbles shift in. It counts the 8 nibbles, and `load_done` tells `bus_if` to
+  clear its busy bit.
 
 No deadlock arises: a store at the head has nothing older to wait for.
 
@@ -201,6 +215,7 @@ byte. Stores add the data bytes.
 ### Rules
 
 - The MCU handles frames strictly in order.
+- A response can start no earlier than the cycle after the last byte of its frame.
 - **At most one load or redirect is outstanding at a time.** A pending load
   delays a redirect, and the reverse. This needs one busy bit, because the core
   always knows what the next `D_VALID` means. Stores do not count, as they have
@@ -297,8 +312,19 @@ Comparisons from the same probes:
 | Iterative shifter | Saves 725 µm². Rejected |
 | Nibble-serial datapath | Saves about 5,900 µm², but ties all logic to a rotation phase. Fallback only |
 
-Real RTL so far, by the same method: `alu` is 4,394 µm² against its 4,845 µm² probe,
-and `decode` is 860 µm². `decode` is part of the front end row.
+Real RTL, by the same method, replaces those probes:
+
+| Block | µm² |
+|---|---:|
+| `alu` | 4,394 |
+| `issue_queue` | 3,358 |
+| `lsu` | 3,184 |
+| `fetch` | 2,905 |
+| `decode` | 860 |
+| `bus_if` | 754 |
+| **Full `cpu`, flattened, with `prf` and `rename_rob`** | **45,449** |
+
+That is below the 49,246 µm² budget, which assumed 15% glue logic.
 
 If latches fail, 19×32 flops scale to about 27,500 µm², which is about 83% of
 2×2 and 55% of 3×2 with glue logic included.
@@ -344,23 +370,34 @@ Runtime was 4 h 26 min on the 4-thread runner GitHub gives public repos. The sam
 job did not finish in 6 h on the 2-thread private runner. Most of it is a few
 stubborn met1 violations, and antenna repair forces a second detailed route.
 
-Projection for the full CPU, which is arithmetic and not a measurement: 49,246 µm²
-from the budget above, plus 20% for the measured gap between probes and the flow's
-synthesis, plus 36% for hardening, gives about 80,000 µm². Assuming the 2×2 ratio
-of core to die, that is about 73% of a 3×2 core and 54% of a 4×2 core. Only 42% has
-been proven to route, so **4×2 is the recommended size**.
+Projection for the full CPU, which is arithmetic and not a measurement: 45,449 µm²
+of real RTL, plus 20% for the gap seen between this quick synthesis and the flow's,
+plus 36% for hardening, gives about 74,000 µm². Assuming the 2×2 ratio of core to
+die, that is about 67% of a 3×2 core and 50% of a 4×2 core. Only 42% has been proven
+to route, so the first CPU build uses 4×2.
 
 ## Risks
 
 | Risk | Status | Plan |
 |---|---|---|
-| Latch PRF timing and glitches | Passes STA and unit-delay gate-level test in the harness, unproven in silicon | Recheck STA in the CPU. Flop fallback by parameter |
+| Latch PRF timing and glitches | Passes STA and unit-delay gate-level test in the harness, unproven in silicon | Recheck STA in the CPU. The flop fallback passes the same CPU tests |
 | SystemVerilog in the TT flow | Confirmed, through GDS and precheck | None needed |
 | Area after hardening | Measured for `prf` only, CPU projected | Re-measure as blocks land. Fallbacks listed above |
 | Routing time against the 6 h job limit | `prf` alone took 4 h 26 min | Harden each new block early. Allow more room than area alone needs |
 | PRF read select slew | 1,761 pins over limit in the harness | Fix when hardening the CPU, before relying on its timing |
 | RP2350 serving the bus | Unconfirmed | Check PIO on the real board. FPGA or MCU on PMOD as fallback |
-| Toolchain and libgcc | Compile and link tested, nothing executed | See [isa.md](isa.md) |
+| Toolchain and libgcc | Compiled C runs on the core in simulation | See [isa.md](isa.md) |
+
+## Verification
+
+`pytest tb` runs block tests, deliberate bug injection into every block, and whole
+programs on `cpu`. `test/` runs a short program on the Tiny Tapeout pins, on RTL and
+on the gate-level netlist.
+
+Whole-program tests run on an in-order reference model, `tb/refmodel.py`, which
+raises on undefined behaviour. The core must make the same stores in the same order
+and halt the same way, behind `tb/mcu.py`, a Python MCU with random memory timing.
+Programs come from `tb/randprog.py` and from C in `sw/`.
 
 ## Demonstrating out-of-order execution
 
@@ -384,4 +421,8 @@ measure this on silicon by counting clocks.
 | 2026-10-30 | Phase 2 uses this datapath with a window of one | Avoids writing a separate in-order CPU that would be thrown away |
 | 2026-10-31 | Repo made public | The private 2-thread runner could not finish hardening within 6 h, and TT needs a public repo at submission |
 | 2026-10-31 | One adder and one right shifter in the ALU | SLL reverses the operand and result, so all three shifts share a shifter |
+| 2026-10-31 | Stores complete through the result bus with the zero tag | The ROB has one complete port, and this avoids a second arbiter |
+| 2026-10-31 | Fetch queue is the head plus the word being assembled | Saves a separate byte assembler, and fetch still takes a byte every cycle |
+| 2026-10-31 | The PC holds a redirect target until its frame is sent | No extra storage, and fetch is flushed at the acknowledge anyway |
+| 2026-10-31 | First CPU build on 4×2 | About 50% projected, against 42% proven to route |
 | 2026-10-31 | Keep the latch PRF | The harness passed routing, STA, LVS, precheck and the gate-level test |

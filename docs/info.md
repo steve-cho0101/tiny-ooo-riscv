@@ -1,26 +1,30 @@
 ## How it works
 
-This is a test harness for the physical register file of a planned out-of-order
-RV32E CPU. It holds 19 32-bit registers in a latch array, with two read ports,
-one write port and a ready bit per register.
+This is a genuinely out-of-order RV32E CPU. It renames registers onto 19 physical
+registers held in latches, tracks four instructions in a reorder buffer, and issues
+from a two-entry reservation station. A slow load does not hold up the independent
+instructions behind it, and everything still retires in program order.
+
+The chip has no memory of its own. A microcontroller holds 64 KiB of memory, supplies
+the clock, streams instruction bytes in, and answers load frames. It runs C compiled
+with GCC for `rv32e`/`ilp32e`.
 
 ## How to test
 
-Drive a command on `uio[2:0]` and its value on `ui[7:0]`, one per clock.
+The RP2350 on the demo board acts as the memory. It streams instructions from address
+0 on `ui` after reset, and reads frames from `uo` while `uio[6]` is high.
 
-| Command | Action |
+| Header bits | Field |
 |---|---|
-| 1 | Shift `ui` into the 32-bit write data, least significant byte first |
-| 2 | Write that data to register `ui[4:0]` |
-| 3 | Select register `ui[4:0]` for read port 1 |
-| 4 | Select register `ui[4:0]` for read port 2 |
-| 5 | Clear the ready bit of register `ui[4:0]` |
-| 6 | Select what `uo` shows, from `ui[3:0]` |
+| `[7:6]` | 00 redirect, 01 load, 10 store, 11 halt |
+| `[5:4]` | Store size: 0 byte, 1 halfword, 2 word |
+| `[3:0]` | Halt reason: 0 ECALL, 1 EBREAK, 2 illegal |
 
-Output selects 0 to 3 show port 1 bytes, and 4 to 7 show port 2 bytes. Any higher
-select shows port 1 ready, port 2 ready, write-back valid and write-back tag.
-Register 31 always reads as zero.
+Each frame continues with the address, low byte first, and a store then sends its data
+bytes. Answer a load with 8 nibbles of the aligned word on `uio[3:0]`, low nibble first,
+strobing `uio[5]`. Answer a redirect with one `uio[5]` pulse, then stream from the new
+address.
 
 ## External hardware
 
-None. The demo board can drive all pins.
+None. The demo board's RP2350 provides the memory and the clock.

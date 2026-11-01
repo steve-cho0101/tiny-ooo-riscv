@@ -1,14 +1,14 @@
 # Tiny Tapeout project information
 project:
-  title:        "tiny-ooo-riscv register file test"
+  title:        "tiny-ooo-riscv"
   author:       "Steve Cho"
   discord:      ""
-  description:  "Latch register file test for an out-of-order RV32E CPU"
+  description:  "Out-of-order RV32E CPU with memory on an external MCU"
   language:     "SystemVerilog"
   clock_hz:     10000000
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "2x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  tiles: "4x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
   top_module:  "tt_um_steve_cho0101_ooo"
@@ -17,41 +17,50 @@ project:
   # Source files must be in ./src and you must list each source file separately, one per line.
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
+    - "uop_pkg.sv"
     - "project.sv"
+    - "cpu.sv"
+    - "fetch.sv"
+    - "decode.sv"
+    - "rename_rob.sv"
+    - "issue_queue.sv"
     - "prf.sv"
+    - "alu.sv"
+    - "lsu.sv"
+    - "bus_if.sv"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "VALUE0"
-  ui[1]: "VALUE1"
-  ui[2]: "VALUE2"
-  ui[3]: "VALUE3"
-  ui[4]: "VALUE4"
-  ui[5]: "VALUE5"
-  ui[6]: "VALUE6"
-  ui[7]: "VALUE7"
+  ui[0]: "I_DATA0"
+  ui[1]: "I_DATA1"
+  ui[2]: "I_DATA2"
+  ui[3]: "I_DATA3"
+  ui[4]: "I_DATA4"
+  ui[5]: "I_DATA5"
+  ui[6]: "I_DATA6"
+  ui[7]: "I_DATA7"
 
   # Outputs
-  uo[0]: "OUT0"
-  uo[1]: "OUT1"
-  uo[2]: "OUT2"
-  uo[3]: "OUT3"
-  uo[4]: "OUT4"
-  uo[5]: "OUT5"
-  uo[6]: "OUT6"
-  uo[7]: "OUT7"
+  uo[0]: "O_DATA0"
+  uo[1]: "O_DATA1"
+  uo[2]: "O_DATA2"
+  uo[3]: "O_DATA3"
+  uo[4]: "O_DATA4"
+  uo[5]: "O_DATA5"
+  uo[6]: "O_DATA6"
+  uo[7]: "O_DATA7"
 
   # Bidirectional pins
-  uio[0]: "CMD0"
-  uio[1]: "CMD1"
-  uio[2]: "CMD2"
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "D_DATA0"
+  uio[1]: "D_DATA1"
+  uio[2]: "D_DATA2"
+  uio[3]: "D_DATA3"
+  uio[4]: "I_VALID"
+  uio[5]: "D_VALID"
+  uio[6]: "O_VALID"
+  uio[7]: "I_READY"
 
 # Do not change!
 yaml_version: 6
