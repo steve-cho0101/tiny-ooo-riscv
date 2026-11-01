@@ -1,7 +1,8 @@
 # Architecture
 
-Status: agreed design. `rename_rob` and `prf` are implemented and tested in
-simulation, and the rest has no RTL yet. Nothing here has been hardened.
+Status: agreed design. `rename_rob`, `prf`, `decode` and `alu` are implemented and
+tested in simulation, and the rest has no RTL yet. `prf` has been hardened in a test
+harness, see [Hardening results](#hardening-results). The CPU has not.
 
 ## Goals
 
@@ -246,6 +247,12 @@ State after halt is precise, because everything older has retired.
 | `lsu` | One slot, byte alignment | `at_rob_head`, connects to `bus_if` |
 | `bus_if` | Frames, arbitration, busy bit | The pins above |
 
+Class, ALU and halt codes live in `src/uop_pkg.sv`. Use `uop_pkg::NAME` in full,
+because the Yosys `read_verilog` parser in the flow rejects `import`.
+
+`decode` reports x0 for any register field the instruction does not use, so rename
+gives it the always-ready zero tag and never renames from stray bits.
+
 ## Area budget
 
 Measured with Yosys 0.70 against `sky130_fd_sc_hd__tt_025C_1v80`. This is synthesis
@@ -290,16 +297,68 @@ Comparisons from the same probes:
 | Iterative shifter | Saves 725 µm². Rejected |
 | Nibble-serial datapath | Saves about 5,900 µm², but ties all logic to a rotation phase. Fallback only |
 
+Real RTL so far, by the same method: `alu` is 4,394 µm² against its 4,845 µm² probe,
+and `decode` is 860 µm². `decode` is part of the front end row.
+
 If latches fail, 19×32 flops scale to about 27,500 µm², which is about 83% of
 2×2 and 55% of 3×2 with glue logic included.
+
+## Hardening results
+
+Run 41170895085 attempt 2, commit `5ea6664`: `prf` plus the pin harness in
+`src/project.sv`, on a 2×2 die at 10 MHz, with `PL_TARGET_DENSITY_PCT` 45. It does
+not include `rename_rob` or any other CPU block.
+
+| Check | Result |
+|---|---|
+| Routing | 0 DRC violations after 49 iterations in the final route |
+| Precheck | All checks passed (Magic, KLayout, pins, layers, boundary) |
+| LVS, antenna | Passed, 0 violating nets |
+| Gate-level test | 4 of 4 passed, unit delay with no SDF, so it shows logic and not timing |
+| Setup, 9 corners | 0 violations, worst slack 20.69 ns, reg-to-reg 43.65 ns |
+| Hold, 9 corners | 0 violations, worst slack 0.136 ns |
+| Max slew | **1,761 pins over the 0.75 ns limit** in the worst corner, up to 2.21 ns |
+| Max cap | **85 pins over limit**, slow corner only |
+
+STA does cover the latch gate race: the flop-to-latch hold paths are reported and
+the tightest is 0.138 ns, and the gates have clock gating checks with 43.65 ns of
+slack. The slowest latch read reaches a pin about 9 ns after the latch opens in the
+slow corner, including about 2.25 ns of clock network.
+
+The slew violations do not fail the flow and are included in the STA figures, but
+they should not reach the CPU. The worst nets are the decoded PRF read selects,
+each fanning out to 32 mux bits through weak `clkdlybuf4s25_1` buffers.
+
+| Area | µm² |
+|---|---:|
+| Synthesis, harness and `prf` | 22,391 |
+| Placed and routed cells | 30,467 |
+| Timing repair buffers, including 83 hold buffers | 3,712 |
+| Clock buffers | 2,905 |
+| Core | 72,565 |
+
+Utilization was 42%. A 1×2 at 88% could not route, with about 13,000 violations.
+Hardening added 36% to synthesis area.
+
+Runtime was 4 h 26 min on the 4-thread runner GitHub gives public repos. The same
+job did not finish in 6 h on the 2-thread private runner. Most of it is a few
+stubborn met1 violations, and antenna repair forces a second detailed route.
+
+Projection for the full CPU, which is arithmetic and not a measurement: 49,246 µm²
+from the budget above, plus 20% for the measured gap between probes and the flow's
+synthesis, plus 36% for hardening, gives about 80,000 µm². Assuming the 2×2 ratio
+of core to die, that is about 73% of a 3×2 core and 54% of a 4×2 core. Only 42% has
+been proven to route, so **4×2 is the recommended size**.
 
 ## Risks
 
 | Risk | Status | Plan |
 |---|---|---|
-| Latch PRF timing and glitches | Unproven | Harden the PRF alone first. Gate-level simulation. Flop fallback by parameter |
-| SystemVerilog in the TT flow | Unconfirmed | Smoke test through the template, use `sv2v` if needed |
-| Area after hardening | Unproven | Re-measure as blocks land. Fallbacks listed above |
+| Latch PRF timing and glitches | Passes STA and unit-delay gate-level test in the harness, unproven in silicon | Recheck STA in the CPU. Flop fallback by parameter |
+| SystemVerilog in the TT flow | Confirmed, through GDS and precheck | None needed |
+| Area after hardening | Measured for `prf` only, CPU projected | Re-measure as blocks land. Fallbacks listed above |
+| Routing time against the 6 h job limit | `prf` alone took 4 h 26 min | Harden each new block early. Allow more room than area alone needs |
+| PRF read select slew | 1,761 pins over limit in the harness | Fix when hardening the CPU, before relying on its timing |
 | RP2350 serving the bus | Unconfirmed | Check PIO on the real board. FPGA or MCU on PMOD as fallback |
 | Toolchain and libgcc | Compile and link tested, nothing executed | See [isa.md](isa.md) |
 
@@ -323,3 +382,6 @@ measure this on silicon by counting clocks.
 | 2026-10-30 | Dependent issue at E+2 | No throughput cost given the fetch rate, and removes half-cycle read paths |
 | 2026-10-30 | Budget raised after real `rename_rob` synthesis | Measured 12,189 µm² against 5,832 µm² from probes. Fits 3×2, tight for 2×2 |
 | 2026-10-30 | Phase 2 uses this datapath with a window of one | Avoids writing a separate in-order CPU that would be thrown away |
+| 2026-10-31 | Repo made public | The private 2-thread runner could not finish hardening within 6 h, and TT needs a public repo at submission |
+| 2026-10-31 | One adder and one right shifter in the ALU | SLL reverses the operand and result, so all three shifts share a shifter |
+| 2026-10-31 | Keep the latch PRF | The harness passed routing, STA, LVS, precheck and the gate-level test |
