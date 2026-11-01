@@ -32,14 +32,7 @@ In priority order:
 
 ## Block diagram
 
-```text
- ui_in ─► Fetch queue(2) ─► Decode ─► Rename/ROB ─► RS(2) ─► PRF read ─► ALU ──┐
-              ▲               │       (RAT+slots)              │               │
-              │ redirect      │ LUI/AUIPC/link                 └► LSU slot ──┐ │
-              │               ▼                                              ▼ ▼
- Bus ◄────────┴──────── PRF write ◄──────────── result bus (LSU priority) ◄──┴─┘
- (uo_out, uio)                        └─► wakeup RS, mark ROB done
-```
+![Block diagram of the CPU, from fetch through rename, issue and execution to the result bus, with memory on the external MCU](block-diagram.svg)
 
 ## Pipeline timing
 
