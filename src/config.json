@@ -15,6 +15,15 @@
   "//": "Users have reported that values up to 80 worked well for them.",
   "PL_TARGET_DENSITY_PCT": 50,
 
+  "//": "EXTRA_EXCLUDED_CELLS - Repair picks the weakest buffer it may use, which caused most slew violations.",
+  "EXTRA_EXCLUDED_CELLS": [
+    "sky130_fd_sc_hd__clkdlybuf4s*",
+    "sky130_fd_sc_hd__buf_1",
+    "sky130_fd_sc_hd__clkbuf_1",
+    "sky130_fd_sc_hd__dlygate*",
+    "sky130_fd_sc_hd__dlymetal*"
+  ],
+
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
   "CLOCK_PERIOD": 100,
